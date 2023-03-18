@@ -1,5 +1,5 @@
 /*
- * Benchmark program for CSR SpMV
+ * mtxfeatures
  *
  * Copyright (C) 2023 James D. Trotter
  *
@@ -1160,7 +1160,6 @@ int main(int argc, char *argv[])
     fprintf(stdout, "nonzeros: %'"PRIdx"\n", csrsize+diagsize);
     fprintf(stdout, "minimum nonzeros per row: %'"PRIdx"\n", rowsizemin);
     fprintf(stdout, "maximum nonzeros per row: %'"PRIdx"\n", rowsizemax);
-    fprintf(stdout, "mean nonzeros per row: %'.3f\n", rowsizemax);
 
     double rowsizemean = (double) (csrsize+diagsize) / (double) num_rows;
     double rowsizesd = 0;
@@ -1176,6 +1175,7 @@ int main(int argc, char *argv[])
     rowsizesd /= num_rows;
     rowsizecv = rowsizesd / rowsizemean;
 
+    fprintf(stdout, "mean nonzeros per row: %'.3f\n", rowsizemean);
     fprintf(stdout, "standard deviation nonzeros per row: %'.3f\n", rowsizesd);
     fprintf(stdout, "coefficient of variation nonzeros per row: %'.3f\n", rowsizecv);
 
