@@ -1,0 +1,60 @@
+This is the README file for mtxfeatures, a program for computing
+various features of sparse matrices in the Matrix Market file format.
+
+  Copyright (C) 2023 James D. Trotter
+
+  Copying and distribution of this file, with or without modification,
+  are permitted in any medium without royalty provided the copyright
+  notice and this notice are preserved.
+
+Building
+--------
+
+The mtxfeatures programs can be built with `make'. Compilation and
+linking may be configured through the environment variable `CC', which
+is used to choose a compiler, and `CFLAGS' and `LDFLAGS', which are
+used to set compiler flags and linker flags, respectively. Here is an
+example:
+
+     make CC=gcc CFLAGS="-O3 -march=native"
+
+Usage
+-----
+
+mtxfeatures is used to load a matrix from a file in Matrix Market
+format (see https://math.nist.gov/MatrixMarket/formats.html), and
+compute various matrix features, such as bandwidth and profile.
+
+Some parts of these computations can use OpenMP for shared-memory
+parallelism. In this case, the environment variable `OMP_NUM_THREADS'
+can be set to control the number of threads that are used. In
+addition, `OMP_PROC_BIND' can be set to bind threads to particular
+cores.
+
+If the option `--verbose' is supplied, then some more information is
+printed, such as how long time is spent loading the matrix and
+computing matrix features.
+
+Here is an example showing how to compute matrix features for the
+matrix stored in the file test.mtx:
+
+    $ ./mtxfeatures test.mtx  --verbose
+    mtxfile_read: 0.000685 seconds (0.2 MB/s)
+    csr_from_coo: 0.143457 seconds, 4 rows, 5 columns, 9 nonzeros, 1 to 5 nonzeros per row
+    computing matrix features:
+    rows: 4
+    columns: 5
+    nonzeros: 9
+    minimum nonzeros per row: 1
+    maximum nonzeros per row: 5
+    mean nonzeros per row: 0.000
+    standard deviation nonzeros per row: 2.688
+    coefficient of variation nonzeros per row: 1.194
+    done computing features in 0.027858 seconds
+
+    $ make CC=gcc CFLAGS="-march=native -O3 -fopenmp"
+
+Copying
+-------
+mtxfeatures is free software. See the file COPYING for copying
+conditions.
