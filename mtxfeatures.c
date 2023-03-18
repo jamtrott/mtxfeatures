@@ -1157,7 +1157,7 @@ int main(int argc, char *argv[])
 
     fprintf(stdout, "rows: %'"PRIdx"\n", num_rows);
     fprintf(stdout, "columns: %'"PRIdx"\n", num_columns);
-    fprintf(stdout, "nonzeros: %'"PRIdx"\n", csrsize+diagsize);
+    fprintf(stdout, "nonzeros: %'"PRId64"\n", csrsize+diagsize);
     fprintf(stdout, "minimum nonzeros per row: %'"PRIdx"\n", rowsizemin);
     fprintf(stdout, "maximum nonzeros per row: %'"PRIdx"\n", rowsizemax);
 
