@@ -1,3 +1,8 @@
+2023-03-22  James D. Trotter  <james@simula.no>
+
+	* mtxfeatures.c (main): fix incorrect calculation for coefficient
+	of variation of nonzeros per row.
+
 2023-03-17  James D. Trotter  <james@simula.no>
 
         Initial version.

@@ -1172,7 +1172,7 @@ int main(int argc, char *argv[])
         double rowsize = csrrowptr[i+1]-csrrowptr[i];
         rowsizesd += (rowsize-rowsizemean)*(rowsize-rowsizemean);
     }
-    rowsizesd /= num_rows;
+    rowsizesd = sqrt(rowsizesd / num_rows);
     rowsizecv = rowsizesd / rowsizemean;
 
     fprintf(stdout, "mean nonzeros per row: %'.3f\n", rowsizemean);
