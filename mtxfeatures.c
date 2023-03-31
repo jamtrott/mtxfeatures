@@ -22,9 +22,18 @@
  *
  * Authors:
  *  James D. Trotter <james@simula.no>
- *
+ *  Johannes Langguth <langguth@simula.no>
  *
  * History:
+ *
+ *  1.1 — 2023-03-23:
+ *
+ *   - add option for counting number of nonzeros in off-diagonal
+ *     blocks with respect to a typical, equal-sized block
+ *     partitioning of rows (e.g., as used in SpMV with CSR format).
+ *
+ *   - fix incorrect standard deviation and coefficient of variation
+ *     of nonzeros per row
  *
  *  1.0 — 2023-03-17:
  *
@@ -97,6 +106,8 @@ struct program_options
     bool separate_diagonal;
     bool bandwidth;
     bool profile;
+    int nblockssize;
+    int * nblocks;
     int verbose;
     int quiet;
 };
@@ -114,6 +125,8 @@ static int program_options_init(
     args->separate_diagonal = false;
     args->bandwidth = false;
     args->profile = false;
+    args->nblockssize = 0;
+    args->nblocks = NULL;
     args->quiet = 0;
     args->verbose = 0;
     return 0;
@@ -127,6 +140,7 @@ static void program_options_free(
     struct program_options * args)
 {
     if (args->Apath) free(args->Apath);
+    if (args->nblocks) free(args->nblocks);
 }
 
 /**
@@ -158,6 +172,8 @@ static void program_options_print_help(
     /* fprintf(f, "  --separate-diagonal    store diagonal nonzeros separately\n"); */
     fprintf(f, "  --bandwidth            compute matrix bandwidth\n");
     fprintf(f, "  --profile              compute matrix profile\n");
+    fprintf(f, "  --offdiagonal-block-nonzeros=N..  partition matrix into N-by-N blocks\n");
+    fprintf(f, "                                    and count nonzeros in off-diagonal blocks\n");
     fprintf(f, "  -q, --quiet            do not print Matrix Market output\n");
     fprintf(f, "  -v, --verbose          be more verbose\n");
     fprintf(f, "\n");
@@ -340,6 +356,54 @@ int parse_double(
 }
 
 /**
+ * ‘parse_ints()’ parses a string of comma-separated numbers to
+ * produce an array of integers.
+ *
+ * Numbers are parsed using ‘strtoll()’, following the conventions
+ * documented in the man page for that function.  In addition, some
+ * further error checking is performed to ensure that each number is
+ * parsed correctly. The number of items parsed is stored in ‘N’. If
+ * ‘x’ is not ‘NULL’, then it must point to an array of length
+ * ‘xsize’, and the integers resulting from parsing are stored in ‘x’.
+ *
+ * If ‘endptr’ is not ‘NULL’, the address stored in ‘endptr’ points to
+ * the first character beyond the characters that were consumed during
+ * parsing.
+ *
+ * On success, ‘0’ is returned. Otherwise, if the input contained
+ * invalid characters, ‘EINVAL’ is returned. If the resulting number
+ * cannot be represented as a signed integer, ‘ERANGE’ is returned.
+ */
+int parse_ints(
+    int * N,
+    int xsize,
+    int * x,
+    const char * s,
+    char ** outendptr,
+    int64_t * outbytes_read)
+{
+    *N = 0;
+    while (true) {
+        char * endptr;
+        int64_t bytes_read = outbytes_read ? *outbytes_read : 0;
+        long long int y;
+        int err = parse_long_long_int(s, &endptr, 10, &y, &bytes_read);
+        if (outendptr) *outendptr = endptr;
+        if (outbytes_read) *outbytes_read = bytes_read;
+        if (err) return err;
+        if (y < INT_MIN || y > INT_MAX) return ERANGE;
+        if (x && *N >= xsize) return ENOMEM;
+        else if (x) x[*N] = y;
+        (*N)++;
+        s += bytes_read;
+        if (*s == '\0') break;
+        if (*s == ',') s++;
+        else break;
+    }
+    return 0;
+}
+
+/**
  * ‘parse_program_options()’ parses program options.
  */
 static int parse_program_options(
@@ -369,6 +433,24 @@ static int parse_program_options(
         }
         if (strcmp(argv[0], "--profile") == 0) {
             args->profile = 1;
+            (*nargs)++; argv++; continue;
+        }
+
+        if (strstr(argv[0], "--offdiagonal-block-nonzeros") == argv[0]) {
+            int n = strlen("--offdiagonal-block-nonzeros");
+            const char * s = &argv[0][n];
+            if (*s == '=') { s++; }
+            else if (*s == '\0' && argc-*nargs > 1) { (*nargs)++; argv++; s=argv[0]; }
+            else { program_options_free(args); return EINVAL; }
+            char * t;
+            int N;
+            err = parse_ints(&N, 0, NULL, s, &t, NULL);
+            if (err || *t != '\0') { program_options_free(args); return EINVAL; }
+            args->nblockssize = N;
+            args->nblocks = malloc(args->nblockssize * sizeof(int));
+            if (!args->nblocks) return errno;
+            err = parse_ints(&N, args->nblockssize, args->nblocks, s, &t, NULL);
+            if (err || *t != '\0') { program_options_free(args); return EINVAL; }
             (*nargs)++; argv++; continue;
         }
 
@@ -929,6 +1011,44 @@ static int csrprofile(
     return 0;
 }
 
+static int csroffdiagblocknnz(
+    int64_t * offdiagblocknnz,
+    int nrowblocks,
+    int ncolblocks,
+    idx_t num_rows,
+    idx_t num_columns,
+    int64_t csrsize,
+    idx_t rowsizemin,
+    idx_t rowsizemax,
+    const int64_t * __restrict rowptr,
+    const idx_t * __restrict colidx,
+    const double * __restrict a,
+    const double * __restrict ad)
+{
+    int64_t N = 0;
+#ifdef _OPENMP
+    #pragma omp parallel for reduction(+:N)
+#endif
+    for (int p = 0; p < nrowblocks; p++) {
+        idx_t rowstart = p*(num_rows/nrowblocks) + (p < num_rows%nrowblocks ? p : num_rows%nrowblocks);
+        idx_t rowend = (p+1)*(num_rows/nrowblocks) + (p+1 < num_rows%nrowblocks ? p+1 : num_rows%nrowblocks);
+        idx_t colstart = p*(num_columns/ncolblocks) + (p < num_columns%ncolblocks ? p : num_columns%ncolblocks);
+        idx_t colend = (p+1)*(num_columns/ncolblocks) + (p+1 < num_columns%ncolblocks ? p+1 : num_columns%ncolblocks);
+        if (rowstart > num_rows) rowstart = num_rows;
+        if (rowend > num_rows) rowend = num_rows;
+        if (colstart > num_columns) colstart = num_columns;
+        if (colend > num_columns) colend = num_columns;
+        for (idx_t i = rowstart; i < rowend; i++) {
+            for (int64_t k = rowptr[i]; k < rowptr[i+1]; k++) {
+                idx_t j = colidx[k];
+                if (j < colstart || j >= colend) N++;
+            }
+        }
+    }
+    *offdiagblocknnz = N;
+    return 0;
+}
+
 /**
  * ‘main()’.
  */
@@ -1203,6 +1323,25 @@ int main(int argc, char *argv[])
             return EXIT_FAILURE;
         }
         fprintf(stdout, "profile: %'"PRId64"\n", profile);
+    }
+
+    for (int i = 0; i < args.nblockssize; i++) {
+        int N = args.nblocks[i];
+        int64_t offdiagblocknnz = 0;
+        err = csroffdiagblocknnz(
+            &offdiagblocknnz, N, N, num_rows, num_columns, csrsize,
+            rowsizemin, rowsizemax, csrrowptr, csrcolidx, csra, csrad);
+        if (err) {
+            if (args.verbose > 0) fprintf(stderr, "\n");
+            fprintf(stderr, "%s: %s\n", program_invocation_short_name, strerror(err));
+            free(csrad); free(csra); free(csrcolidx); free(csrrowptr);
+            program_options_free(&args);
+            return EXIT_FAILURE;
+        }
+
+        /* fprintf(stderr, "args.nblocks=["); for (int i = 0; i < args.nblockssize; i++) fprintf(stderr, " %d", args.nblocks[i]); fprintf(stderr, "]\n"); */
+        fprintf(stdout, "nonzeros in off-diagonal blocks for %'d row partitions: %'"PRId64"\n",
+                N, offdiagblocknnz);
     }
 
     if (args.verbose > 0) {

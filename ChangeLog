@@ -1,3 +1,11 @@
+2023-03-31  James D. Trotter  <james@simula.no>
+
+	* mtxfeatures.c: add option for computing nonzeros in off-diagonal
+	blocks with respect to an equal-sized block partitioning of rows.
+
+	Fix some issues where arrays were not initialised correctly if
+	compiled without OpenMP.
+
 2023-03-22  James D. Trotter  <james@simula.no>
 
 	* mtxfeatures.c (main): fix incorrect calculation for coefficient
