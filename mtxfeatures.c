@@ -84,7 +84,7 @@ typedef int64_t idx_t;
 #endif
 
 const char * program_name = "mtxfeatures";
-const char * program_version = "1.0";
+const char * program_version = "1.1";
 const char * program_copyright =
     "Copyright (C) 2023 James D. Trotter";
 const char * program_license =
@@ -1213,11 +1213,11 @@ int main(int argc, char *argv[])
     }
 #ifdef _OPENMP
     #pragma omp parallel for
+#endif
     for (idx_t i = 0; i < num_rows; i++) {
         for (int64_t k = csrrowptr[i]; k < csrrowptr[i+1]; k++)
             csrcolidx[k] = 0;
     }
-#endif
     double * csra = malloc(csrsize * sizeof(double));
     if (!csra) {
         if (args.verbose > 0) fprintf(stderr, "\n");
@@ -1236,17 +1236,19 @@ int main(int argc, char *argv[])
         program_options_free(&args);
         return EXIT_FAILURE;
     }
-#ifdef _OPENMP
     if (diagsize > 0) {
+#ifdef _OPENMP
         #pragma omp parallel for
+#endif
         for (idx_t i = 0; i < num_rows; i++) csrad[i] = 0;
     }
+#ifdef _OPENMP
     #pragma omp parallel for
+#endif
     for (idx_t i = 0; i < num_rows; i++) {
         for (int64_t k = csrrowptr[i]; k < csrrowptr[i+1]; k++)
             csra[k] = 0;
     }
-#endif
     err = csr_from_coo(
         symmetry, num_rows, num_columns, num_nonzeros, rowidx, colidx, a,
         csrrowptr, csrsize, rowsizemin, rowsizemax, csrcolidx, csra, csrad,
