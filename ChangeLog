@@ -1,3 +1,8 @@
+2023-04-01  James D. Trotter  <james@simula.no>
+
+	* mtxfeatures.c: fix bug in converting square, symmetric matrices
+	to CSR
+
 2023-03-31  James D. Trotter  <james@simula.no>
 
 	* mtxfeatures.c: add option for computing nonzeros in off-diagonal

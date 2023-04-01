@@ -26,6 +26,10 @@
  *
  * History:
  *
+ *  1.2 — 2023-04-01:
+ *
+ *   - fix bug in converting square, symmetric matrices to CSR
+ *
  *  1.1 — 2023-03-23:
  *
  *   - add option for counting number of nonzeros in off-diagonal
@@ -84,7 +88,7 @@ typedef int64_t idx_t;
 #endif
 
 const char * program_name = "mtxfeatures";
-const char * program_version = "1.1";
+const char * program_version = "1.2";
 const char * program_copyright =
     "Copyright (C) 2023 James D. Trotter";
 const char * program_license =
@@ -172,8 +176,8 @@ static void program_options_print_help(
     /* fprintf(f, "  --separate-diagonal    store diagonal nonzeros separately\n"); */
     fprintf(f, "  --bandwidth            compute matrix bandwidth\n");
     fprintf(f, "  --profile              compute matrix profile\n");
-    fprintf(f, "  --offdiagonal-block-nonzeros=N..  partition matrix into N-by-N blocks\n");
-    fprintf(f, "                                    and count nonzeros in off-diagonal blocks\n");
+    fprintf(f, "  --offdiagonal-block-nonzeros=N..  partition matrix into N-by-N blocks and\n");
+    fprintf(f, "                                    count nonzeros in off-diagonal blocks\n");
     fprintf(f, "  -q, --quiet            do not print Matrix Market output\n");
     fprintf(f, "  -v, --verbose          be more verbose\n");
     fprintf(f, "\n");
@@ -899,21 +903,21 @@ static int csr_from_coo(
     bool separate_diagonal)
 {
     if (num_rows == num_columns && symmetry == mtxsymmetric && separate_diagonal) {
-        for (int64_t k = 0; k < num_nonzeros;) {
-            if (rowidx[k] == colidx[k]) { csrad[rowidx[k]-1] += a[k++]; }
+        for (int64_t k = 0; k < num_nonzeros; k++) {
+            if (rowidx[k] == colidx[k]) { csrad[rowidx[k]-1] += a[k]; }
             else {
                 idx_t i = rowidx[k]-1, j = colidx[k]-1;
-                csrcolidx[rowptr[i]] = j; csra[rowptr[i]] = a[k++]; rowptr[i]++;
-                csrcolidx[rowptr[j]] = i; csra[rowptr[j]] = a[k++]; rowptr[j]++;
+                csrcolidx[rowptr[i]] = j; csra[rowptr[i]] = a[k]; rowptr[i]++;
+                csrcolidx[rowptr[j]] = i; csra[rowptr[j]] = a[k]; rowptr[j]++;
             }
         }
         for (idx_t i = num_rows; i > 0; i--) rowptr[i] = rowptr[i-1];
         rowptr[0] = 0;
     } else if (num_rows == num_columns && symmetry == mtxsymmetric && !separate_diagonal) {
-        for (int64_t k = 0; k < num_nonzeros;) {
+        for (int64_t k = 0; k < num_nonzeros; k++) {
             idx_t i = rowidx[k]-1, j = colidx[k]-1;
-            csrcolidx[rowptr[i]] = j; csra[rowptr[i]] = a[k++]; rowptr[i]++;
-            if (i != j) { csrcolidx[rowptr[j]] = i; csra[rowptr[j]] = a[k++]; rowptr[j]++; }
+            csrcolidx[rowptr[i]] = j; csra[rowptr[i]] = a[k]; rowptr[i]++;
+            if (i != j) { csrcolidx[rowptr[j]] = i; csra[rowptr[j]] = a[k]; rowptr[j]++; }
         }
         for (idx_t i = num_rows; i > 0; i--) rowptr[i] = rowptr[i-1];
         rowptr[0] = 0;
@@ -977,7 +981,8 @@ static int csrbandwidth(
     for (idx_t i = 0; i < num_rows; i++) {
         for (int64_t k = rowptr[i]; k < rowptr[i+1]; k++) {
             idx_t j = colidx[k];
-            if (bw < abs(i-j+1)) bw = abs(i-j+1);
+            if (i >= j && bw < i-j+1) bw = i-j+1;
+            else if (i < j && bw < j-i+1) bw = j-i+1;
         }
     }
     *bandwidth = bw;
